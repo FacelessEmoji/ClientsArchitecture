@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Service Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; margin: 20px; }
+        button { margin: 5px; padding: 10px; font-size: 14px; cursor: pointer; }
+        .links, .traffic-controls { margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+    <h1>Service Dashboard</h1>
+
+    <div class="links">
+        <h2>Monitoring Links</h2>
+        <ul>
+            <li><button onclick="window.open('http://localhost:5601/app/discover#/')">ELK: Discover</button></li>
+            <li><button onclick="window.open('http://localhost:9090/query')">Prometheus: Query - http_requests_total</button></li>
+            <li><button onclick="window.open('http://localhost:3000/dashboard/new?orgId=1&from=now-6h&to=now&timezone=browser')">Grafana: New Dashboard</button></li>
+            <li><button onclick="window.open('http://localhost:15672/#/')">RabbitMQ</button></li>
+            <li><button onclick="window.open('http://localhost:8081/db/main_db/clients')">Mongo Express</button></li>
+        </ul>
+    </div>
+
+    <div class="traffic-controls">
+        <h2>Traffic Generation</h2>
+        <button onclick="startTraffic()">Start Traffic</button>
+        <button onclick="stopTraffic()">Stop Traffic</button>
+        <button onclick="setTrafficRate(1)">Set Rate: 1/s</button>
+        <button onclick="setTrafficRate(5)">Set Rate: 5/s</button>
+        <button onclick="setTrafficRate(10)">Set Rate: 10/s</button>
+    </div>
+
+    <script>
+        function startTraffic() {
+            fetch("/traffic/start", { method: "POST" })
+                .then(response => response.json())
+                .then(data => alert(data.message));
+        }
+
+        function stopTraffic() {
+            fetch("/traffic/stop", { method: "POST" })
+                .then(response => response.json())
+                .then(data => alert(data.message));
+        }
+
+        function setTrafficRate(rate) {
+            fetch("/traffic/set_rate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ rate })
+            }).then(response => response.json())
+              .then(data => alert(data.message));
+        }
+    </script>
+</body>
+</html>

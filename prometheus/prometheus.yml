@@ -1,0 +1,8 @@
+global:
+  scrape_interval: 15s  # Интервал сборов метрик
+
+scrape_configs:
+  - job_name: 'gateway'
+    metrics_path: '/metrics'  # Путь к метрикам вашего приложения
+    static_configs:
+      - targets: ['gateway:8080']  # Указываем имя контейнера и порт

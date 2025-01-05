@@ -1,0 +1,157 @@
+services:
+  mongo:
+    container_name: mongo
+    image: mongo:8.0.4
+    restart: always
+    ports:
+      - 27017:27017
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: root
+    networks:
+      - elk
+
+  mongo-express:
+    container_name: mongo-express
+    image: mongo-express:1.0.2
+    restart: always
+    ports:
+      - 8081:8081
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: admin
+      ME_CONFIG_MONGODB_ADMINPASSWORD: root
+      ME_CONFIG_MONGODB_URL: mongodb://admin:root@mongo:27017/
+      ME_CONFIG_BASICAUTH: false
+    networks:
+      - elk
+
+  domain:
+    container_name: domain
+    build:
+      context: ./domain
+    depends_on:
+      - mongo
+      - rabbitmq
+    ports:
+      - 50051:50051
+    networks:
+      - elk
+
+  gateway:
+    build: ./gateway
+    container_name: gateway
+    ports:
+      - 8080:8080
+    environment:
+      - REDIS_HOST=redis
+      - DOMAIN_SERVICE_HOST=domain
+      - DOMAIN_SERVICE_PORT=50051
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      - redis
+      - domain
+      - rabbitmq
+    networks:
+      - elk
+
+  rabbitmq:
+    container_name: rabbitmq
+    image: rabbitmq:management
+    ports:
+      - 5672:5672
+      - 15672:15672
+    networks:
+      - elk
+
+  redis:
+    container_name: redis
+    image: redis:7.4.1
+    ports:
+      - 6379:6379
+    volumes:
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf
+    command: redis-server /usr/local/etc/redis/redis.conf
+    networks:
+      - elk
+
+  prometheus:
+    container_name: prometheus
+    image: prom/prometheus:3.1.0
+    ports:
+      - 9090:9090
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - elk
+
+  grafana:
+    container_name: grafana
+    image: grafana/grafana:11.4.0
+    ports:
+      - 3000:3000
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    depends_on:
+      - prometheus
+    networks:
+      - elk
+
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.9.0
+    container_name: elasticsearch
+    ports:
+      - 9200:9200
+      - 9300:9300
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ELASTICSEARCH_HTTP_ENABLED=true
+    networks:
+      - elk
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.9.0
+    container_name: logstash
+    ports:
+      - 5044:5044
+    depends_on:
+      - elasticsearch
+    environment:
+      - XPACK_MONITORING_ENABLED=false
+      - XPACK_MONITORING_ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    volumes:
+      - ./elk/logstash.conf:/usr/share/logstash/pipeline/logstash.conf
+    networks:
+      - elk
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.9.0
+    container_name: kibana
+    ports:
+      - 5601:5601
+    depends_on:
+      - elasticsearch
+    networks:
+      - elk
+
+  dashboard:
+    container_name: dashboard
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    ports:
+      - 8082:8082
+    volumes:
+      - ./dashboard/templates:/app/templates
+    restart: always
+    depends_on:
+      - domain
+      - gateway
+    networks:
+      - elk
+
+
+networks:
+  elk:
+    driver: bridge
