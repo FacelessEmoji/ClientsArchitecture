@@ -1,4 +1,3 @@
-import sys
 import json
 import grpc
 import redis
@@ -10,77 +9,74 @@ from proto import service_pb2, service_pb2_grpc
 
 app = Flask(__name__)
 
-# Подключение к Redis для кеширования
 redis_client = redis.Redis(host="redis", port=6379)
 
-# Метрики для Prometheus
 REQUEST_COUNT = Counter('http_requests_total', 'Total HTTP requests', ['method', 'endpoint'])
 
 
-# Функция для отправки сообщений в RabbitMQ
-def send_to_rabbitmq(queue_name, message):
+def send_to_rabbitmq(queue_name, grpc_message):
     try:
         connection = pika.BlockingConnection(pika.ConnectionParameters('rabbitmq'))
         channel = connection.channel()
         channel.queue_declare(queue=queue_name)
-        channel.basic_publish(exchange='', routing_key=queue_name, body=message)
+        channel.basic_publish(exchange='', routing_key=queue_name, body=grpc_message)
         connection.close()
     except Exception as e:
         print(f"Error sending to RabbitMQ: {e}")
 
 
-# Функция для отправки сообщений в Logstash
 def send_to_logstash(message):
-    host = 'logstash'  # Имя контейнера Logstash
+    host = 'logstash'
     port = 5044
     try:
-        # Создаём TCP-сокет и подключаемся к Logstash
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.connect((host, port))
             s.sendall(message.encode('utf-8'))
             print(f"Message sent to Logstash: {host}:{port}")
     except Exception as e:
-        # Обработка ошибок
         print(f"Error sending message to Logstash: {e}")
 
 
-# Маршрут для создания клиента (POST)
 @app.route('/clients', methods=['POST'])
 def create_client():
-    REQUEST_COUNT.labels(method='POST', endpoint='/clients').inc()  # Добавляем инкремент для POST
+    REQUEST_COUNT.labels(method='POST', endpoint='/clients').inc()
 
     data = request.get_json()
-    message = json.dumps(data)
+    grpc_message = service_pb2.CreateClientRequest(
+        first_name=data.get('first_name'),
+        last_name=data.get('last_name'),
+        address=data.get('address'),
+        phone=data.get('phone')
+    ).SerializeToString()
 
-    # Отправляем в RabbitMQ для асинхронной обработки
-    send_to_rabbitmq('create_client', message)
+    send_to_rabbitmq('create_client', grpc_message)
 
-    # Формируем сообщение для отправки в Logstash
     logstash_message = json.dumps({
         "event": "create_client",
         "data": data
     })
     send_to_logstash(logstash_message)
 
-    # Очищаем кеш клиентов, чтобы следующий GET-запрос получил актуальные данные
     redis_client.delete('clients')
 
     return jsonify({"message": "Client creation request processed"}), 202
 
 
-# Маршрут для обновления клиента (PUT)
 @app.route('/clients/<string:id>', methods=['PUT'])
 def update_client(id):
-    REQUEST_COUNT.labels(method='PUT', endpoint='/clients').inc()  # Добавляем инкремент для PUT
+    REQUEST_COUNT.labels(method='PUT', endpoint='/clients').inc()
 
     data = request.get_json()
-    data['id'] = id
-    message = json.dumps(data)
+    grpc_message = service_pb2.UpdateClientRequest(
+        id=id,
+        first_name=data.get('first_name'),
+        last_name=data.get('last_name'),
+        address=data.get('address'),
+        phone=data.get('phone')
+    ).SerializeToString()
 
-    # Отправляем в RabbitMQ для асинхронной обработки
-    send_to_rabbitmq('update_client', message)
+    send_to_rabbitmq('update_client', grpc_message)
 
-    # Формируем сообщение для отправки в Logstash
     logstash_message = json.dumps({
         "event": "update_client",
         "id": id,
@@ -88,44 +84,36 @@ def update_client(id):
     })
     send_to_logstash(logstash_message)
 
-    # Очищаем кеш клиентов, чтобы следующий GET-запрос получил актуальные данные
     redis_client.delete('clients')
 
     return jsonify({"message": f"Client {id} update request processed"}), 202
 
 
-# Маршрут для удаления клиента (DELETE)
 @app.route('/clients/<string:id>', methods=['DELETE'])
 def delete_client(id):
-    REQUEST_COUNT.labels(method='DELETE', endpoint='/clients').inc()  # Добавляем инкремент для DELETE
+    REQUEST_COUNT.labels(method='DELETE', endpoint='/clients').inc()
 
-    # Подготавливаем сообщение для отправки в RabbitMQ для асинхронной обработки
-    message = json.dumps({"id": id})
+    grpc_message = service_pb2.DeleteClientRequest(id=id).SerializeToString()
 
-    # Отправляем в RabbitMQ
-    send_to_rabbitmq('delete_client', message)
+    send_to_rabbitmq('delete_client', grpc_message)
 
-    # Формируем сообщение для отправки в Logstash
     logstash_message = json.dumps({
         "event": "delete_client",
         "id": id
     })
     send_to_logstash(logstash_message)
 
-    # Очищаем кеш клиентов, чтобы следующий GET-запрос получил актуальные данные
     redis_client.delete('clients')
 
     return jsonify({"message": f"Client {id} deletion request processed"}), 202
 
 
-# Маршрут для получения данных о клиентах (GET)
 @app.route('/clients', methods=['GET'])
 def get_clients():
-    REQUEST_COUNT.labels(method='GET', endpoint='/clients').inc()  # Добавляем инкремент для GET
+    REQUEST_COUNT.labels(method='GET', endpoint='/clients').inc()
 
     cached = redis_client.get('clients')
     if cached:
-        # Логируем получение данных из кеша
         print('Returning cached clients data')
         return jsonify({"data": json.loads(cached.decode('utf-8'))}), 200
 
@@ -140,7 +128,6 @@ def get_clients():
             ]
             redis_client.setex('clients', 60, json.dumps(clients))
 
-            # Формируем сообщение для отправки в Logstash
             logstash_message = json.dumps({
                 "event": "get_clients",
                 "status": "fetched_from_service",
@@ -154,7 +141,6 @@ def get_clients():
         return jsonify({"error": "Failed to fetch clients from domain"}), 500
 
 
-# Маршрут для метрик Prometheus
 @app.route('/metrics', methods=['GET'])
 def metrics():
     return generate_latest(), 200, {'Content-Type': 'text/plain'}

@@ -10,7 +10,7 @@ service ClientService {
 }
 
 message Client {
-    string id = 1;  // Изменено с int32 на string
+    string id = 1;
     string first_name = 2;
     string last_name = 3;
     string address = 4;
@@ -29,7 +29,7 @@ message CreateClientRequest {
 }
 
 message UpdateClientRequest {
-    string id = 1;  // Изменено с int32 на string
+    string id = 1;
     string first_name = 2;
     string last_name = 3;
     string address = 4;
@@ -37,7 +37,7 @@ message UpdateClientRequest {
 }
 
 message DeleteClientRequest {
-    string id = 1;  // Изменено с int32 на string
+    string id = 1;
 }
 
 message Empty {}
