@@ -45,3 +45,14 @@
 1. Клиенты: Создание таблицы для хранения информации о клиентах (имя, фамилия, адрес, телефон).
 
 docker-compose up --build
+
+http://localhost:8080/clients
+
+{
+    "first_name": "Din",
+    "last_name": "Doe",
+    "address": "123 Elm Street",
+    "phone": "555-1234"
+}
+
+http://localhost:8080/clients/677a7b1a35078d79a58c908b
